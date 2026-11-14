@@ -1,11 +1,25 @@
-# Ignore everything by default
-*
+# === Default: ignore everything at root (keep process/governance files local) ===
+/*
 
-# Allow docs and schema directories
-!docs/
-!docs/**
-!schema/
-!schema/**
+# === Public deliverables (docs, schema, and TypeScript reference implementation) ===
+!/docs/
+!/schema/
+!/src/
+!/package.json
+!/pnpm-lock.yaml
+!/tsconfig.json
+!/vitest.config.ts
+!/README.md
+!/LICENSE
+!/.gitignore
 
-# Keep .gitignore itself tracked
-!.gitignore
+# === Exclude build/cache/OS noise inside allowed directories ===
+.DS_Store
+*.swp
+*.swo
+*~
+Thumbs.db
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
