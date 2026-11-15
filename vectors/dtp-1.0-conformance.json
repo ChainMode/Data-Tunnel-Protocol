@@ -1,0 +1,324 @@
+{
+  "suiteVersion": "1.0.0",
+  "protocol": "dtp/1.0",
+  "normativeSchemaJson": "schemas/dtp-1.0.json",
+  "normativeSchemaCddl": "schemas/dtp-1.0.cddl",
+  "wireFormatSpec": "[4B big-endian uint32 header byte length][RFC 8785 JCS UTF-8 FrameHeader][12B IV + AES-256-GCM ciphertext + 16B AuthTag]",
+  "wireCryptoPositiveVectors": [
+    {
+      "id": "vec-wire-01-standard-dag",
+      "description": "Standard DTP 1.0 data frame with nested DAG edges, JCS canonical header, and AES-256-GCM payload",
+      "reencodeExactMatch": true,
+      "sessionKeyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "ivHex": "a0a1a2a3a4a5a6a7a8a9aaab",
+      "expectedHeader": {
+        "protocolVersion": {
+          "major": 1,
+          "minor": 0
+        },
+        "frameType": "data",
+        "fragmentId": "frag_0192b4a0-7c10-7000-8000-000000000101",
+        "agreementId": "agr_0192b4a0-7c10-7000-8000-000000000001",
+        "originTimestamp": 1731664800000,
+        "dagDependencies": [
+          {
+            "targetFragmentId": "frag_0192b4a0-7c10-7000-8000-000000000100",
+            "relationType": "derived_from"
+          },
+          {
+            "targetFragmentId": "frag_0192b4a0-7c10-7000-8000-000000000099",
+            "relationType": "annotates"
+          }
+        ],
+        "encryptionMetadata": {
+          "algorithm": "AES-256-GCM",
+          "keyVersion": 1
+        },
+        "sequenceNumber": 42
+      },
+      "jcsHeader": "{\"agreementId\":\"agr_0192b4a0-7c10-7000-8000-000000000001\",\"dagDependencies\":[{\"relationType\":\"derived_from\",\"targetFragmentId\":\"frag_0192b4a0-7c10-7000-8000-000000000100\"},{\"relationType\":\"annotates\",\"targetFragmentId\":\"frag_0192b4a0-7c10-7000-8000-000000000099\"}],\"encryptionMetadata\":{\"algorithm\":\"AES-256-GCM\",\"keyVersion\":1},\"fragmentId\":\"frag_0192b4a0-7c10-7000-8000-000000000101\",\"frameType\":\"data\",\"originTimestamp\":1731664800000,\"protocolVersion\":{\"major\":1,\"minor\":0},\"sequenceNumber\":42}",
+      "plaintextHex": "7b2273656e736f72223a2268656172745f72617465222c2262706d223a37322c22756e6974223a2262706d227d",
+      "encryptedPayloadHex": "a0a1a2a3a4a5a6a7a8a9aaab9d3a0f482bb86dcd405fa5bb621bb2aa2fde3864f7956e4efe7e4ba4459c472df0032996db00691f3dec69ea74124b76fac74abf7321759fabb311e5f4",
+      "wireFrameHex": "000001f17b2261677265656d656e744964223a226167725f30313932623461302d376331302d373030302d383030302d303030303030303030303031222c22646167446570656e64656e63696573223a5b7b2272656c6174696f6e54797065223a22646572697665645f66726f6d222c22746172676574467261676d656e744964223a22667261675f30313932623461302d376331302d373030302d383030302d303030303030303030313030227d2c7b2272656c6174696f6e54797065223a22616e6e6f7461746573222c22746172676574467261676d656e744964223a22667261675f30313932623461302d376331302d373030302d383030302d303030303030303030303939227d5d2c22656e6372797074696f6e4d65746164617461223a7b22616c676f726974686d223a224145532d3235362d47434d222c226b657956657273696f6e223a317d2c22667261676d656e744964223a22667261675f30313932623461302d376331302d373030302d383030302d303030303030303030313031222c226672616d6554797065223a2264617461222c226f726967696e54696d657374616d70223a313733313636343830303030302c2270726f746f636f6c56657273696f6e223a7b226d616a6f72223a312c226d696e6f72223a307d2c2273657175656e63654e756d626572223a34327da0a1a2a3a4a5a6a7a8a9aaab9d3a0f482bb86dcd405fa5bb621bb2aa2fde3864f7956e4efe7e4ba4459c472df0032996db00691f3dec69ea74124b76fac74abf7321759fabb311e5f4"
+    },
+    {
+      "id": "vec-wire-02-empty-compressed",
+      "description": "Boundary DTP 1.0 data frame with 0-byte payload and batch-compressed null agreementId",
+      "reencodeExactMatch": true,
+      "sessionKeyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "ivHex": "b0b1b2b3b4b5b6b7b8b9babb",
+      "expectedHeader": {
+        "protocolVersion": {
+          "major": 1,
+          "minor": 0
+        },
+        "frameType": "data",
+        "fragmentId": "frag_0192b4a0-7c10-7000-8000-000000000102",
+        "agreementId": null,
+        "originTimestamp": 1731664801000,
+        "dagDependencies": [],
+        "encryptionMetadata": {
+          "algorithm": "AES-256-GCM",
+          "keyVersion": 1
+        },
+        "sequenceNumber": 43
+      },
+      "jcsHeader": "{\"agreementId\":null,\"dagDependencies\":[],\"encryptionMetadata\":{\"algorithm\":\"AES-256-GCM\",\"keyVersion\":1},\"fragmentId\":\"frag_0192b4a0-7c10-7000-8000-000000000102\",\"frameType\":\"data\",\"originTimestamp\":1731664801000,\"protocolVersion\":{\"major\":1,\"minor\":0},\"sequenceNumber\":43}",
+      "plaintextHex": "",
+      "encryptedPayloadHex": "b0b1b2b3b4b5b6b7b8b9babb722035358b7acae46691dc8807fd42aa",
+      "wireFrameHex": "000001117b2261677265656d656e744964223a6e756c6c2c22646167446570656e64656e63696573223a5b5d2c22656e6372797074696f6e4d65746164617461223a7b22616c676f726974686d223a224145532d3235362d47434d222c226b657956657273696f6e223a317d2c22667261676d656e744964223a22667261675f30313932623461302d376331302d373030302d383030302d303030303030303030313032222c226672616d6554797065223a2264617461222c226f726967696e54696d657374616d70223a313733313636343830313030302c2270726f746f636f6c56657273696f6e223a7b226d616a6f72223a312c226d696e6f72223a307d2c2273657175656e63654e756d626572223a34337db0b1b2b3b4b5b6b7b8b9babb722035358b7acae46691dc8807fd42aa"
+    },
+    {
+      "id": "vec-wire-03-minor-forward-compat",
+      "description": "DTP 1.3 minor forward-compatible frame carrying an unknown optional header property ignored by 1.0 decoders (OQ-DTP-2)",
+      "reencodeExactMatch": false,
+      "sessionKeyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "ivHex": "c0c1c2c3c4c5c6c7c8c9cacb",
+      "expectedHeader": {
+        "protocolVersion": {
+          "major": 1,
+          "minor": 3
+        },
+        "frameType": "data",
+        "fragmentId": "frag_0192b4a0-7c10-7000-8000-000000000103",
+        "agreementId": "agr_0192b4a0-7c10-7000-8000-000000000001",
+        "originTimestamp": 1731664802000,
+        "dagDependencies": [],
+        "encryptionMetadata": {
+          "algorithm": "AES-256-GCM",
+          "keyVersion": 2
+        },
+        "sequenceNumber": 44
+      },
+      "jcsHeader": "{\"agreementId\":\"agr_0192b4a0-7c10-7000-8000-000000000001\",\"dagDependencies\":[],\"encryptionMetadata\":{\"algorithm\":\"AES-256-GCM\",\"keyVersion\":2},\"fragmentId\":\"frag_0192b4a0-7c10-7000-8000-000000000103\",\"frameType\":\"data\",\"futureExtensionHint\":\"qos-low-latency\",\"originTimestamp\":1731664802000,\"protocolVersion\":{\"major\":1,\"minor\":3},\"sequenceNumber\":44}",
+      "plaintextHex": "6474702d312e332d666f72776172642d636f6d706174",
+      "encryptedPayloadHex": "c0c1c2c3c4c5c6c7c8c9cacb643c574a4656a573feb68fd553de8c7b2f1c8e4f5d96adee030928ef211d9685a134e2482a2f",
+      "wireFrameHex": "0000015f7b2261677265656d656e744964223a226167725f30313932623461302d376331302d373030302d383030302d303030303030303030303031222c22646167446570656e64656e63696573223a5b5d2c22656e6372797074696f6e4d65746164617461223a7b22616c676f726974686d223a224145532d3235362d47434d222c226b657956657273696f6e223a327d2c22667261676d656e744964223a22667261675f30313932623461302d376331302d373030302d383030302d303030303030303030313033222c226672616d6554797065223a2264617461222c22667574757265457874656e73696f6e48696e74223a22716f732d6c6f772d6c6174656e6379222c226f726967696e54696d657374616d70223a313733313636343830323030302c2270726f746f636f6c56657273696f6e223a7b226d616a6f72223a312c226d696e6f72223a337d2c2273657175656e63654e756d626572223a34347dc0c1c2c3c4c5c6c7c8c9cacb643c574a4656a573feb68fd553de8c7b2f1c8e4f5d96adee030928ef211d9685a134e2482a2f"
+    }
+  ],
+  "wireCryptoNegativeVectors": [
+    {
+      "id": "vec-neg-01-truncated-prefix",
+      "description": "Wire buffer shorter than 4-byte length prefix",
+      "sessionKeyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "wireFrameHex": "000010",
+      "expectedErrorCode": 1001,
+      "expectedErrorName": "FRAME_DESERIALIZATION_FAILED"
+    },
+    {
+      "id": "vec-neg-02-header-len-overflow",
+      "description": "4-byte length prefix exceeds remaining wire bytes",
+      "sessionKeyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "wireFrameHex": "000002007b7d0102",
+      "expectedErrorCode": 1001,
+      "expectedErrorName": "FRAME_DESERIALIZATION_FAILED"
+    },
+    {
+      "id": "vec-neg-03-missing-protocol-version",
+      "description": "JSON header omits mandatory protocolVersion field",
+      "sessionKeyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "wireFrameHex": "000000cf7b2261677265656d656e744964223a6e756c6c2c22646167446570656e64656e63696573223a5b5d2c22656e6372797074696f6e4d65746164617461223a7b22616c676f726974686d223a224145532d3235362d47434d222c226b657956657273696f6e223a317d2c22667261676d656e744964223a22667261675f6d697373696e675f766572222c226672616d6554797065223a2264617461222c226f726967696e54696d657374616d70223a313733313636343830303030302c2273657175656e63654e756d626572223a317db0b1b2b3b4b5b6b7b8b9babb722035358b7acae46691dc8807fd42aa",
+      "expectedErrorCode": 1001,
+      "expectedErrorName": "FRAME_DESERIALIZATION_FAILED"
+    },
+    {
+      "id": "vec-neg-04-tampered-gcm-tag",
+      "description": "1-bit flip in 16-byte AES-256-GCM authentication tag",
+      "sessionKeyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "wireFrameHex": "000001f17b2261677265656d656e744964223a226167725f30313932623461302d376331302d373030302d383030302d303030303030303030303031222c22646167446570656e64656e63696573223a5b7b2272656c6174696f6e54797065223a22646572697665645f66726f6d222c22746172676574467261676d656e744964223a22667261675f30313932623461302d376331302d373030302d383030302d303030303030303030313030227d2c7b2272656c6174696f6e54797065223a22616e6e6f7461746573222c22746172676574467261676d656e744964223a22667261675f30313932623461302d376331302d373030302d383030302d303030303030303030303939227d5d2c22656e6372797074696f6e4d65746164617461223a7b22616c676f726974686d223a224145532d3235362d47434d222c226b657956657273696f6e223a317d2c22667261676d656e744964223a22667261675f30313932623461302d376331302d373030302d383030302d303030303030303030313031222c226672616d6554797065223a2264617461222c226f726967696e54696d657374616d70223a313733313636343830303030302c2270726f746f636f6c56657273696f6e223a7b226d616a6f72223a312c226d696e6f72223a307d2c2273657175656e63654e756d626572223a34327da0a1a2a3a4a5a6a7a8a9aaab9d3a0f482bb86dcd405fa5bb621bb2aa2fde3864f7956e4efe7e4ba4459c472df0032996db00691f3dec69ea74124b76fac74abf7321759fabb311e5f5",
+      "expectedErrorCode": 2001,
+      "expectedErrorName": "DECRYPTION_FAILED"
+    },
+    {
+      "id": "vec-neg-05-wrong-session-key",
+      "description": "Decryption attempted with mismatched 32-byte session key",
+      "sessionKeyHex": "ff0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "wireFrameHex": "000001f17b2261677265656d656e744964223a226167725f30313932623461302d376331302d373030302d383030302d303030303030303030303031222c22646167446570656e64656e63696573223a5b7b2272656c6174696f6e54797065223a22646572697665645f66726f6d222c22746172676574467261676d656e744964223a22667261675f30313932623461302d376331302d373030302d383030302d303030303030303030313030227d2c7b2272656c6174696f6e54797065223a22616e6e6f7461746573222c22746172676574467261676d656e744964223a22667261675f30313932623461302d376331302d373030302d383030302d303030303030303030303939227d5d2c22656e6372797074696f6e4d65746164617461223a7b22616c676f726974686d223a224145532d3235362d47434d222c226b657956657273696f6e223a317d2c22667261676d656e744964223a22667261675f30313932623461302d376331302d373030302d383030302d303030303030303030313031222c226672616d6554797065223a2264617461222c226f726967696e54696d657374616d70223a313733313636343830303030302c2270726f746f636f6c56657273696f6e223a7b226d616a6f72223a312c226d696e6f72223a307d2c2273657175656e63654e756d626572223a34327da0a1a2a3a4a5a6a7a8a9aaab9d3a0f482bb86dcd405fa5bb621bb2aa2fde3864f7956e4efe7e4ba4459c472df0032996db00691f3dec69ea74124b76fac74abf7321759fabb311e5f4",
+      "expectedErrorCode": 2001,
+      "expectedErrorName": "DECRYPTION_FAILED"
+    },
+    {
+      "id": "vec-neg-06-major-v2-incompatible",
+      "description": "Future major version 2.0 rejected under same-MAJOR compatibility policy (OQ-DTP-2)",
+      "sessionKeyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "wireFrameHex": "000001117b2261677265656d656e744964223a6e756c6c2c22646167446570656e64656e63696573223a5b5d2c22656e6372797074696f6e4d65746164617461223a7b22616c676f726974686d223a224145532d3235362d47434d222c226b657956657273696f6e223a317d2c22667261676d656e744964223a22667261675f30313932623461302d376331302d373030302d383030302d303030303030303030313032222c226672616d6554797065223a2264617461222c226f726967696e54696d657374616d70223a313733313636343830313030302c2270726f746f636f6c56657273696f6e223a7b226d616a6f72223a322c226d696e6f72223a307d2c2273657175656e63654e756d626572223a34337db0b1b2b3b4b5b6b7b8b9babb722035358b7acae46691dc8807fd42aa",
+      "expectedErrorCode": 7001,
+      "expectedErrorName": "VERSION_INCOMPATIBLE"
+    },
+    {
+      "id": "vec-neg-07-major-v0-incompatible",
+      "description": "Legacy major version 0.9 rejected under single-MAJOR compatibility policy (OQ-DTP-2)",
+      "sessionKeyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "wireFrameHex": "000001117b2261677265656d656e744964223a6e756c6c2c22646167446570656e64656e63696573223a5b5d2c22656e6372797074696f6e4d65746164617461223a7b22616c676f726974686d223a224145532d3235362d47434d222c226b657956657273696f6e223a317d2c22667261676d656e744964223a22667261675f30313932623461302d376331302d373030302d383030302d303030303030303030313032222c226672616d6554797065223a2264617461222c226f726967696e54696d657374616d70223a313733313636343830313030302c2270726f746f636f6c56657273696f6e223a7b226d616a6f72223a302c226d696e6f72223a397d2c2273657175656e63654e756d626572223a34337db0b1b2b3b4b5b6b7b8b9babb722035358b7acae46691dc8807fd42aa",
+      "expectedErrorCode": 7001,
+      "expectedErrorName": "VERSION_INCOMPATIBLE"
+    }
+  ],
+  "rbacVectors": [
+    {
+      "id": "rbac-01-master-collection-allow",
+      "role": "master",
+      "action": "initiate_collection",
+      "allowed": true,
+      "expectedErrorCode": null
+    },
+    {
+      "id": "rbac-02-master-injection-deny",
+      "role": "master",
+      "action": "initiate_injection",
+      "allowed": false,
+      "expectedErrorCode": 8001
+    },
+    {
+      "id": "rbac-03-slave-injection-allow",
+      "role": "slave",
+      "action": "initiate_injection",
+      "allowed": true,
+      "expectedErrorCode": null
+    },
+    {
+      "id": "rbac-04-slave-collection-deny",
+      "role": "slave",
+      "action": "initiate_collection",
+      "allowed": false,
+      "expectedErrorCode": 8001
+    },
+    {
+      "id": "rbac-05-observer-send-deny",
+      "role": "observer",
+      "action": "send_frame",
+      "allowed": false,
+      "expectedErrorCode": 8002
+    },
+    {
+      "id": "rbac-06-observer-negotiate-deny",
+      "role": "observer",
+      "action": "initiate_collection",
+      "allowed": false,
+      "expectedErrorCode": 8002
+    }
+  ],
+  "agreementVectors": {
+    "batchCompression": {
+      "id": "agr-01-batch-compression-and-boundary-reset",
+      "description": "Consecutive same-agreement data frames omit agreementId, while non-data control frames reset context (OQ-DTP-6)",
+      "inputFrames": [
+        {
+          "frameType": "data",
+          "agreementId": "agr-alpha"
+        },
+        {
+          "frameType": "data",
+          "agreementId": "agr-alpha"
+        },
+        {
+          "frameType": "control",
+          "agreementId": null
+        },
+        {
+          "frameType": "data",
+          "agreementId": "agr-alpha"
+        },
+        {
+          "frameType": "data",
+          "agreementId": "agr-beta"
+        },
+        {
+          "frameType": "data",
+          "agreementId": "agr-beta"
+        }
+      ],
+      "expectedCompressedIds": [
+        "agr-alpha",
+        null,
+        null,
+        "agr-alpha",
+        "agr-beta",
+        null
+      ],
+      "expectedDecompressedIds": [
+        "agr-alpha",
+        "agr-alpha",
+        null,
+        "agr-alpha",
+        "agr-beta",
+        "agr-beta"
+      ]
+    },
+    "missingContextError": {
+      "id": "agr-02-missing-context-null-data",
+      "inputFrames": [
+        {
+          "frameType": "data",
+          "agreementId": null
+        }
+      ],
+      "expectedErrorCode": 3001
+    },
+    "expirationCheck": {
+      "id": "agr-03-expired-agreement",
+      "agreementId": "agr-expiring-01",
+      "createdAt": 1731664800000,
+      "validityPeriod": 60000,
+      "checkAtValid": 1731664860000,
+      "checkAtExpired": 1731664860001,
+      "expectedExpiredErrorCode": 3002
+    }
+  },
+  "dagVectors": {
+    "outOfOrderResolution": {
+      "id": "dag-01-out-of-order-resolution",
+      "steps": [
+        {
+          "fragmentId": "frag-child",
+          "dependencies": [
+            {
+              "targetFragmentId": "frag-parent",
+              "relationType": "derived_from"
+            }
+          ],
+          "expectedStatus": "pending"
+        },
+        {
+          "fragmentId": "frag-parent",
+          "dependencies": [],
+          "expectedStatus": "accepted"
+        }
+      ],
+      "expectedPendingAfterAll": 0
+    },
+    "cycleRejection": {
+      "id": "dag-02-self-and-mutual-cycle",
+      "selfCycleFragmentId": "frag-self",
+      "expectedErrorCode": 4001
+    }
+  },
+  "retryBackoffVector": {
+    "id": "retry-01-bounded-exponential-backoff",
+    "baseDelayMs": 200,
+    "maxRetries": 3,
+    "expectedSchedule": [
+      {
+        "attemptIndex": 0,
+        "allowed": true,
+        "delayMs": 200
+      },
+      {
+        "attemptIndex": 1,
+        "allowed": true,
+        "delayMs": 400
+      },
+      {
+        "attemptIndex": 2,
+        "allowed": true,
+        "delayMs": 800
+      },
+      {
+        "attemptIndex": 3,
+        "allowed": false,
+        "delayMs": 0,
+        "expectedErrorCode": 6002
+      }
+    ]
+  }
+}

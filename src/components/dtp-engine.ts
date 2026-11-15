@@ -1,7 +1,7 @@
 // DTP Engine Implementation
 // Core protocol engine integrating all sub-components.
-// Implements state machine, role-based permissions, and bidirectional data transfer.
-// Requirements: 1.1, 2.1-2.7, 7.3, 10.2-10.4, 12.1-12.4, 13.1, 13.4
+// Implements state machine, role-based permissions, bidirectional data transfer,
+// agreement validation/expiration (3001/3002), and bounded retry with backoff (OQ-DTP-11).
 
 import type {
   DTP_Engine,
@@ -27,11 +27,16 @@ import { DTPEncryptionModule } from './encryption-module.js';
 import { DTPDAGManager } from './dag-manager.js';
 import { DTPAgreementManager } from './agreement-manager.js';
 import { DTPSessionManager } from './session-manager.js';
+import type { SessionStore } from './session-manager.js';
 import { DTPResumeManager } from './resume-manager.js';
 import { AgreementIdCompressor } from './agreement-id-compressor.js';
 import { ContextMetadataValidator } from './context-metadata-validator.js';
 import { DTPErrorCode } from '../errors/error-codes.js';
-import { ErrorHandler, CURRENT_VERSION } from './error-handler.js';
+import {
+  ErrorHandler,
+  CURRENT_VERSION,
+  DEFAULT_MAX_RETRIES,
+} from './error-handler.js';
 
 /** DTP Engine role */
 export type DTPRole = 'master' | 'slave' | 'observer';
@@ -39,8 +44,12 @@ export type DTPRole = 'master' | 'slave' | 'observer';
 /** DTP Engine configuration */
 export interface DTPEngineConfig {
   maxBufferSize?: number;
-  /** Retransmission timeout in milliseconds (default: 5000) */
+  /** Base retransmission timeout in milliseconds (default: 5000) */
   retransmissionTimeout?: number;
+  /** Maximum retransmission attempts before terminal failure (default: 3, OQ-DTP-11) */
+  maxRetries?: number;
+  /** Optional pluggable session store (e.g. EncryptedFileSessionStore per OQ-DTP-10) */
+  sessionStore?: SessionStore;
 }
 
 /** Valid state transitions map */
@@ -92,8 +101,11 @@ export class DTPEngine implements DTP_Engine {
   /** Whether sending is paused due to buffer full */
   private _sendingPaused = false;
 
-  /** Retransmission timeout in ms */
+  /** Base retransmission timeout in ms */
   private readonly retransmissionTimeout: number;
+
+  /** Maximum retransmission attempts (OQ-DTP-11) */
+  private readonly maxRetries: number;
 
   /** Active retransmission timer ID (for cleanup) */
   private retransmissionTimer: ReturnType<typeof setTimeout> | null = null;
@@ -102,20 +114,34 @@ export class DTPEngine implements DTP_Engine {
     this.role = role;
     this.transport = transport;
     this.retransmissionTimeout = config?.retransmissionTimeout ?? 5000;
+    this.maxRetries = config?.maxRetries ?? DEFAULT_MAX_RETRIES;
 
     // Initialize sub-components
     this.frameCodec = new DTPFrameCodec();
     this.encryptionModule = new DTPEncryptionModule(null); // key set on session creation
     this.dagManager = new DTPDAGManager();
     this.agreementManager = new DTPAgreementManager();
-    this.sessionManager = new DTPSessionManager();
-    this.resumeManager = new DTPResumeManager(config?.maxBufferSize);
+    this.sessionManager = new DTPSessionManager(config?.sessionStore);
+    this.resumeManager = new DTPResumeManager(
+      config?.maxBufferSize,
+      this.maxRetries,
+      this.retransmissionTimeout,
+    );
     this.agreementIdCompressor = new AgreementIdCompressor();
     this.contextMetadataValidator = new ContextMetadataValidator();
 
-    // Wire up transport receive handler
+    // Wire up transport receive & connection state handlers
     this.transport.onReceive((connectionId: ConnectionID, data: Uint8Array) => {
       this.handleIncomingData(connectionId, data);
+    });
+    this.transport.onConnectionStateChange((connectionId: ConnectionID, state) => {
+      if (state === 'disconnected') {
+        for (const [sessionId, boundConnId] of this.sessionConnections.entries()) {
+          if (boundConnId === connectionId && this.sessionStates.get(sessionId) === 'transmitting') {
+            this.transitionState(sessionId, 'suspended');
+          }
+        }
+      }
     });
   }
 
@@ -217,7 +243,7 @@ export class DTPEngine implements DTP_Engine {
     this.capContext = capContext;
 
     // Re-initialize encryption module with the session key
-    (this as any).encryptionModule = new DTPEncryptionModule(
+    (this as { encryptionModule: DTPEncryptionModule }).encryptionModule = new DTPEncryptionModule(
       capContext.sessionKey.length === 32 ? capContext.sessionKey : null,
     );
 
@@ -239,7 +265,7 @@ export class DTPEngine implements DTP_Engine {
     this.capContext = capContext;
 
     // Re-initialize encryption module with the session key
-    (this as any).encryptionModule = new DTPEncryptionModule(
+    (this as { encryptionModule: DTPEncryptionModule }).encryptionModule = new DTPEncryptionModule(
       capContext.sessionKey.length === 32 ? capContext.sessionKey : null,
     );
 
@@ -249,6 +275,16 @@ export class DTPEngine implements DTP_Engine {
         new Error(`Cannot restore session: ${sessionId}`),
         { code: DTPErrorCode.SESSION_RESTORE_FAILED },
       );
+    }
+
+    // Re-register active agreements in agreementManager upon restore
+    for (const [agrId, agr] of session.activeAgreements.entries()) {
+      if (!this.agreementManager.getAgreement(agrId)) {
+        (this.agreementManager as unknown as { agreements: Map<string, Agreement> }).agreements.set(
+          agrId,
+          { ...agr, params: { ...agr.params } },
+        );
+      }
     }
 
     this.sessionStates.set(session.sessionId, 'established');
@@ -266,6 +302,29 @@ export class DTPEngine implements DTP_Engine {
     }
     this.sessionManager.closeSession(sessionId);
     this.sessionStates.delete(sessionId);
+  }
+
+  /**
+   * Check idle timeout on a session; if timed out, purge session resources and emit SESSION_TIMEOUT (5002).
+   */
+  enforceSessionTimeout(sessionId: SessionID, now: number = Date.now()): boolean {
+    if (!this.sessionManager.getSession(sessionId)) {
+      return true;
+    }
+    if (this.sessionManager.checkTimeout(sessionId, now)) {
+      this.stopRetransmissionTimer();
+      this.sessionManager.purgeSession(sessionId);
+      this.sessionStates.delete(sessionId);
+      this.sessionConnections.delete(sessionId);
+      this.emitError({
+        frameType: 'control',
+        controlType: 'error_notification',
+        errorCode: DTPErrorCode.SESSION_TIMEOUT,
+        errorMessage: `Session timed out: ${sessionId}`,
+      });
+      return true;
+    }
+    return false;
   }
 
   // ─── Agreement Negotiation with Role Checks ───
@@ -307,7 +366,14 @@ export class DTPEngine implements DTP_Engine {
       );
     }
 
-    return this.agreementManager.handleRequest(sessionId, request);
+    const resp = this.agreementManager.handleRequest(sessionId, request);
+    if (resp.result === 'accepted' && resp.agreementId) {
+      const agr = this.agreementManager.getAgreement(resp.agreementId);
+      if (agr) {
+        session.activeAgreements.set(agr.agreementId, agr);
+      }
+    }
+    return resp;
   }
 
   /** Handle an agreement response, with slave rejection compliance validation and master logging */
@@ -339,15 +405,18 @@ export class DTPEngine implements DTP_Engine {
     const currentState = this.sessionStates.get(sessionId);
     if (currentState === 'negotiating') {
       if (agreement) {
-        // Agreement reached — add to session and transition to transmitting
         const session = this.sessionManager.getSession(sessionId);
         if (session) {
           session.activeAgreements.set(agreement.agreementId, agreement);
         }
         this.transitionState(sessionId, 'transmitting');
       } else {
-        // Negotiation failed — back to established
         this.transitionState(sessionId, 'established');
+      }
+    } else if (agreement) {
+      const session = this.sessionManager.getSession(sessionId);
+      if (session) {
+        session.activeAgreements.set(agreement.agreementId, agreement);
       }
     }
 
@@ -361,7 +430,7 @@ export class DTPEngine implements DTP_Engine {
   // ─── Bidirectional Data Transfer ───
 
   /**
-   * Send a frame: encrypt payload → serialize → send via transport.
+   * Send a frame: check agreement expiration -> encrypt payload -> serialize (JCS) -> send via transport.
    * Maintains independent sequence numbers per direction.
    */
   sendFrame(sessionId: SessionID, frame: LogicalFrame): void {
@@ -380,6 +449,21 @@ export class DTPEngine implements DTP_Engine {
         new Error(`Session not found: ${sessionId}`),
         { code: DTPErrorCode.SESSION_NOT_FOUND },
       );
+    }
+
+    // If the agreement is tracked locally and expired, reject with AGREEMENT_EXPIRED (3002)
+    if (frame.header.agreementId && this.agreementManager.getAgreement(frame.header.agreementId)) {
+      if (this.agreementManager.isAgreementExpired(frame.header.agreementId)) {
+        const expErr = ErrorHandler.createAgreementExpiredError(
+          frame.header.agreementId,
+          frame.header.fragmentId,
+        );
+        this.emitError(expErr);
+        throw Object.assign(
+          new Error(`Agreement expired: ${frame.header.agreementId}`),
+          { code: DTPErrorCode.AGREEMENT_EXPIRED },
+        );
+      }
     }
 
     // Check buffer-full condition
@@ -407,7 +491,6 @@ export class DTPEngine implements DTP_Engine {
         ...frame.header,
         sequenceNumber: seqNum,
         encryptionMetadata: this.encryptionModule.getEncryptionMetadata(),
-        // Origin_Timestamp is preserved as-is (transmission invariance)
       },
       payload: frame.payload,
     };
@@ -465,8 +548,6 @@ export class DTPEngine implements DTP_Engine {
 
   /** Get the send direction based on role */
   private getSendDirection(): TransferDirection {
-    // Slave sends collection data (Terminal → Fay)
-    // Master sends injection data (Fay → Terminal)
     return this.role === 'slave' ? 'collection' : 'injection';
   }
 
@@ -495,17 +576,31 @@ export class DTPEngine implements DTP_Engine {
   }
 
   /**
-   * Trigger retransmission of unacknowledged fragments.
-   * Called when retransmission timeout fires.
+   * Trigger bounded retransmission of unacknowledged fragments (OQ-DTP-11).
+   * Once a fragment's retry count reaches maxRetries, emits terminal RETRANSMISSION_TIMEOUT (6002)
+   * and evicts it instead of retrying infinitely.
    */
   retransmitUnacknowledged(sessionId: SessionID): void {
-    const fragments = this.resumeManager.getUnacknowledgedFragments();
-    if (fragments.length === 0) return;
+    const entries = this.resumeManager.getUnacknowledgedEntries();
+    if (entries.length === 0) return;
 
     const connectionId = this.sessionConnections.get(sessionId);
     if (!connectionId) return;
 
-    for (const fragment of fragments) {
+    for (const [seqNum, fragment] of entries) {
+      const decision = this.resumeManager.recordRetryAttempt(seqNum);
+      if (!decision.allowed) {
+        this.resumeManager.evictFragment(seqNum);
+        this.emitError(
+          ErrorHandler.createRetransmissionExhaustedError(
+            fragment.fragmentId,
+            decision.attempt,
+            this.maxRetries,
+          ),
+        );
+        continue;
+      }
+
       const frame: LogicalFrame = {
         header: {
           protocolVersion: CURRENT_VERSION,
@@ -515,13 +610,12 @@ export class DTPEngine implements DTP_Engine {
           originTimestamp: fragment.originTimestamp,
           dagDependencies: fragment.dagDependencies,
           encryptionMetadata: this.encryptionModule.getEncryptionMetadata(),
-          sequenceNumber: 0, // will be re-assigned
+          sequenceNumber: seqNum,
         },
         payload: fragment.data,
       };
 
       try {
-        // Encrypt and send
         const encryptedPayload = this.encryptionModule.encryptPayload(
           frame.payload,
           frame.header.encryptionMetadata,
@@ -530,21 +624,26 @@ export class DTPEngine implements DTP_Engine {
         const serialized = this.frameCodec.serialize(encryptedFrame);
         this.transport.send(connectionId, serialized);
       } catch {
-        // If retransmission fails, emit timeout error
         this.emitError(ErrorHandler.createRetransmissionTimeoutError(fragment.fragmentId));
       }
     }
   }
 
   /**
-   * Start the retransmission timeout timer for a session.
-   * When the timer fires, unacknowledged fragments are retransmitted.
+   * Start bounded exponential-backoff retransmission timer for a session (OQ-DTP-11).
+   * Delay for attempt k is baseDelayMs * 2^k, stopping automatically once cache clears or maxRetries is reached.
    */
-  startRetransmissionTimer(sessionId: SessionID): void {
+  startRetransmissionTimer(sessionId: SessionID, attempt: number = 0): void {
     this.stopRetransmissionTimer();
+    const delayMs = ErrorHandler.computeBackoffDelay(attempt, this.retransmissionTimeout);
     this.retransmissionTimer = setTimeout(() => {
       this.retransmitUnacknowledged(sessionId);
-    }, this.retransmissionTimeout);
+      if (this.resumeManager.getUnacknowledgedFragments().length > 0 && attempt <= this.maxRetries) {
+        this.startRetransmissionTimer(sessionId, attempt + 1);
+      } else {
+        this.retransmissionTimer = null;
+      }
+    }, delayMs);
   }
 
   /** Stop the retransmission timeout timer */
@@ -558,7 +657,6 @@ export class DTPEngine implements DTP_Engine {
   /** Send an error notification frame to the remote peer via transport */
   private sendErrorNotification(connectionId: ConnectionID, error: ErrorNotificationFrame): void {
     try {
-      // Wrap the error notification as a control LogicalFrame
       const errorFrame: LogicalFrame = {
         header: {
           protocolVersion: CURRENT_VERSION,
@@ -586,18 +684,25 @@ export class DTPEngine implements DTP_Engine {
     try {
       frame = this.frameCodec.deserialize(data);
     } catch {
-      // Deserialization failed — send error notification to sender
       const error = ErrorHandler.createDeserializationError();
       this.sendErrorNotification(_connectionId, error);
       this.emitError(error);
       return;
     }
 
-    // Step 2: Version compatibility check
+    // Step 2: Version compatibility check (OQ-DTP-2: same MAJOR only)
     if (!ErrorHandler.isVersionCompatible(frame.header.protocolVersion)) {
       const error = ErrorHandler.createVersionIncompatibleError(CURRENT_VERSION);
       this.sendErrorNotification(_connectionId, error);
       this.emitError(error);
+      return;
+    }
+
+    // Handle incoming cleartext control error notifications without decryption ping-pong
+    if (
+      frame.header.frameType === 'control' &&
+      frame.header.encryptionMetadata.algorithm === 'none'
+    ) {
       return;
     }
 
@@ -610,22 +715,53 @@ export class DTPEngine implements DTP_Engine {
           frame.header.encryptionMetadata,
         );
       } catch {
-        // Decryption failed — send error notification to sender
         const error = ErrorHandler.createDecryptionError(frame.header.fragmentId);
         this.sendErrorNotification(_connectionId, error);
         this.emitError(error);
         return;
       }
 
-      const decryptedFrame: LogicalFrame = {
+      let decryptedFrame: LogicalFrame = {
         header: frame.header,
         payload: decryptedPayload,
       };
 
-      // Update receive-side sequence number
       const direction = this.getReceiveDirection();
       for (const [sessionId, connId] of this.sessionConnections) {
         if (connId === _connectionId) {
+          // Step 4: Agreement decompression & validation for data frames (3001 / 3002)
+          if (decryptedFrame.header.frameType === 'data') {
+            try {
+              decryptedFrame = this.agreementIdCompressor.decompressFrame(decryptedFrame);
+            } catch {
+              const err = ErrorHandler.createAgreementNotFoundError(
+                undefined,
+                decryptedFrame.header.fragmentId,
+              );
+              this.sendErrorNotification(_connectionId, err);
+              this.emitError(err);
+              return;
+            }
+
+            const agreementId = decryptedFrame.header.agreementId!;
+            const validation = this.agreementManager.validateAgreement(agreementId);
+            if (!validation.valid) {
+              const err =
+                validation.errorCode === DTPErrorCode.AGREEMENT_EXPIRED
+                  ? ErrorHandler.createAgreementExpiredError(
+                      agreementId,
+                      decryptedFrame.header.fragmentId,
+                    )
+                  : ErrorHandler.createAgreementNotFoundError(
+                      agreementId,
+                      decryptedFrame.header.fragmentId,
+                    );
+              this.sendErrorNotification(_connectionId, err);
+              this.emitError(err);
+              return;
+            }
+          }
+
           const session = this.sessionManager.getSession(sessionId);
           if (session) {
             const dirState = direction === 'collection'

@@ -1,0 +1,283 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://faying.org/schemas/dtp-1.0.json",
+  "title": "Data Tunnel Protocol (DTP) 1.0 Normative Schema",
+  "description": "Machine-readable schema for DTP 1.0 header structures, fragments, agreements, sessions, negotiation frames, and error notifications. Wire framing follows [4B big-endian uint32 header byte length][RFC 8785 JCS canonical UTF-8 JSON header][12B IV + AES-256-GCM ciphertext + 16B AuthTag] (OQ-DTP-1, OQ-DTP-2, OQ-DTP-7, OQ-DTP-9).",
+  "type": "object",
+  "oneOf": [
+    { "$ref": "#/$defs/FrameHeader" },
+    { "$ref": "#/$defs/Fragment" },
+    { "$ref": "#/$defs/Agreement" },
+    { "$ref": "#/$defs/RequestFrame" },
+    { "$ref": "#/$defs/ResponseFrame" },
+    { "$ref": "#/$defs/ControlFrame" },
+    { "$ref": "#/$defs/ErrorNotificationFrame" }
+  ],
+  "$defs": {
+    "ProtocolVersion": {
+      "description": "Semantic major.minor version. DTP 1.0 guarantees backward/forward compatibility ONLY within the same MAJOR version (major === 1); differing MAJOR triggers VERSION_INCOMPATIBLE (7001).",
+      "type": "object",
+      "required": ["major", "minor"],
+      "additionalProperties": false,
+      "properties": {
+        "major": { "type": "integer", "const": 1 },
+        "minor": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "FrameType": {
+      "type": "string",
+      "enum": ["data", "request", "response", "control"]
+    },
+    "DAGRelationType": {
+      "type": "string",
+      "enum": ["derived_from", "annotates", "supersedes"]
+    },
+    "DAGEdge": {
+      "type": "object",
+      "required": ["relationType", "targetFragmentId"],
+      "additionalProperties": false,
+      "properties": {
+        "relationType": { "$ref": "#/$defs/DAGRelationType" },
+        "targetFragmentId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "EncryptionMetadata": {
+      "type": "object",
+      "required": ["algorithm", "keyVersion"],
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": {
+          "type": "string",
+          "enum": ["AES-256-GCM", "AES-128-GCM", "ChaCha20-Poly1305", "none"]
+        },
+        "keyVersion": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "FrameHeader": {
+      "description": "Normative LogicalFrame header serialized via RFC 8785 JSON Canonicalization Scheme (JCS). Receivers MUST ignore unknown optional properties when major === 1.",
+      "type": "object",
+      "required": [
+        "agreementId",
+        "dagDependencies",
+        "encryptionMetadata",
+        "fragmentId",
+        "frameType",
+        "originTimestamp",
+        "protocolVersion",
+        "sequenceNumber"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "agreementId": {
+          "type": ["string", "null"],
+          "description": "Active Agreement_ID or null when omitted via deterministic batch compression (OQ-DTP-6) or on control/negotiation frames."
+        },
+        "dagDependencies": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/DAGEdge" }
+        },
+        "encryptionMetadata": { "$ref": "#/$defs/EncryptionMetadata" },
+        "fragmentId": { "type": "string" },
+        "frameType": { "$ref": "#/$defs/FrameType" },
+        "originTimestamp": { "type": "integer", "minimum": 0 },
+        "protocolVersion": { "$ref": "#/$defs/ProtocolVersion" },
+        "sequenceNumber": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "HardwareSource": {
+      "type": "object",
+      "required": ["kind", "precision", "samplingRate", "sensorType"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "hardware" },
+        "precision": { "type": "string", "minLength": 1 },
+        "samplingRate": { "type": "number", "exclusiveMinimum": 0 },
+        "sensorType": { "type": "string", "minLength": 1 }
+      }
+    },
+    "SoftwareSource": {
+      "type": "object",
+      "required": ["appIdentifier", "kind", "sharingMethod"],
+      "additionalProperties": false,
+      "properties": {
+        "appIdentifier": { "type": "string", "minLength": 1 },
+        "kind": { "const": "software" },
+        "sharingMethod": { "type": "string", "minLength": 1 }
+      }
+    },
+    "ContextMetadata": {
+      "type": "object",
+      "required": ["customFields", "dataType", "source"],
+      "additionalProperties": false,
+      "properties": {
+        "customFields": { "type": "object" },
+        "dataType": { "type": "string", "minLength": 1 },
+        "source": {
+          "oneOf": [
+            { "$ref": "#/$defs/HardwareSource" },
+            { "$ref": "#/$defs/SoftwareSource" }
+          ]
+        }
+      }
+    },
+    "Fragment": {
+      "type": "object",
+      "required": [
+        "agreementId",
+        "contextMetadata",
+        "dagDependencies",
+        "data",
+        "fragmentId",
+        "originTimestamp"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "agreementId": { "type": "string", "minLength": 1 },
+        "contextMetadata": { "$ref": "#/$defs/ContextMetadata" },
+        "dagDependencies": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/DAGEdge" }
+        },
+        "data": {
+          "type": "string",
+          "description": "Hex or Base64 encoded binary payload when represented in JSON."
+        },
+        "fragmentId": { "type": "string", "minLength": 1 },
+        "originTimestamp": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "AgreementParams": {
+      "type": "object",
+      "required": [
+        "dataRange",
+        "dataType",
+        "frequency",
+        "priority",
+        "transferMode",
+        "validityPeriod"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "dataRange": { "type": "string", "minLength": 1 },
+        "dataType": { "type": "string", "minLength": 1 },
+        "frequency": { "type": ["number", "null"], "exclusiveMinimum": 0 },
+        "priority": {
+          "type": "string",
+          "enum": ["low", "normal", "high", "critical"]
+        },
+        "transferMode": {
+          "type": "string",
+          "enum": ["one_time", "periodic", "streaming"]
+        },
+        "validityPeriod": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "Agreement": {
+      "type": "object",
+      "required": [
+        "agreementId",
+        "createdAt",
+        "direction",
+        "initiator",
+        "params",
+        "sessionId",
+        "status"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "agreementId": { "type": "string", "minLength": 1 },
+        "createdAt": { "type": "integer", "minimum": 0 },
+        "direction": { "type": "string", "enum": ["collection", "injection"] },
+        "initiator": { "type": "string", "enum": ["master", "slave"] },
+        "params": { "$ref": "#/$defs/AgreementParams" },
+        "sessionId": { "type": "string", "minLength": 1 },
+        "status": {
+          "type": "string",
+          "enum": ["negotiating", "active", "suspended", "terminated"]
+        }
+      }
+    },
+    "SessionIdentity": {
+      "description": "Opaque non-empty endpoint identifier; canonical FayID (ifay_ / cofay_) recommended for Fay masters (OQ-DTP-9).",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "RequestFrame": {
+      "type": "object",
+      "required": [
+        "frameType",
+        "proposedParams",
+        "requestId",
+        "requestType",
+        "requestorRole"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "frameType": { "const": "request" },
+        "proposedParams": { "$ref": "#/$defs/AgreementParams" },
+        "requestId": { "type": "string", "minLength": 1 },
+        "requestType": {
+          "type": "string",
+          "enum": ["collection", "injection", "adjustment", "termination"]
+        },
+        "requestorRole": { "type": "string", "enum": ["master", "slave"] },
+        "targetAgreementId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "ResponseFrame": {
+      "type": "object",
+      "required": ["frameType", "requestId", "result"],
+      "additionalProperties": false,
+      "properties": {
+        "agreedParams": { "$ref": "#/$defs/AgreementParams" },
+        "agreementId": { "type": "string", "minLength": 1 },
+        "frameType": { "const": "response" },
+        "rejectionReason": { "type": "string", "minLength": 1 },
+        "requestId": { "type": "string", "minLength": 1 },
+        "result": {
+          "type": "string",
+          "enum": ["accepted", "rejected", "counter_proposal"]
+        }
+      }
+    },
+    "ControlFrame": {
+      "type": "object",
+      "required": ["controlType", "frameType"],
+      "additionalProperties": false,
+      "properties": {
+        "agreementId": { "type": "string" },
+        "controlType": { "type": "string", "minLength": 1 },
+        "details": { "type": "object" },
+        "frameType": { "const": "control" }
+      }
+    },
+    "DTPErrorCode": {
+      "type": "integer",
+      "enum": [
+        1001, 1002,
+        2001, 2002,
+        3001, 3002, 3003,
+        4001, 4002,
+        5001, 5002, 5003,
+        6001, 6002,
+        7001,
+        8001, 8002
+      ]
+    },
+    "ErrorNotificationFrame": {
+      "type": "object",
+      "required": ["controlType", "errorCode", "errorMessage", "frameType"],
+      "additionalProperties": false,
+      "properties": {
+        "controlType": { "const": "error_notification" },
+        "details": { "type": "object" },
+        "errorCode": { "$ref": "#/$defs/DTPErrorCode" },
+        "errorMessage": { "type": "string", "minLength": 1 },
+        "frameType": { "const": "control" },
+        "relatedAgreementId": { "type": "string" },
+        "relatedFrameId": { "type": "string" }
+      }
+    }
+  }
+}

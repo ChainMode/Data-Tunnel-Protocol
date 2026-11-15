@@ -95,8 +95,8 @@ describe('ErrorHandler', () => {
       expect(ErrorHandler.isVersionCompatible({ major: 1, minor: 0 })).toBe(true);
     });
 
-    it('should accept previous major version (backward compat)', () => {
-      expect(ErrorHandler.isVersionCompatible({ major: 0, minor: 5 })).toBe(true);
+    it('should reject previous major version (OQ-DTP-2 same-MAJOR only)', () => {
+      expect(ErrorHandler.isVersionCompatible({ major: 0, minor: 5 })).toBe(false);
     });
 
     it('should reject higher major version', () => {
@@ -113,8 +113,24 @@ describe('ErrorHandler', () => {
       expect(CURRENT_VERSION).toEqual({ major: 1, minor: 0 });
     });
 
-    it('should support previous major version 0', () => {
-      expect(MIN_SUPPORTED_MAJOR).toBe(0);
+    it('should require same major version 1 (aligned with Faying-Protocol)', () => {
+      expect(MIN_SUPPORTED_MAJOR).toBe(1);
+    });
+  });
+
+  describe('Bounded retransmission backoff and agreement expiration helpers (OQ-DTP-11)', () => {
+    it('computes exponential backoff baseDelayMs * 2^attempt', () => {
+      expect(ErrorHandler.computeBackoffDelay(0, 200)).toBe(200);
+      expect(ErrorHandler.computeBackoffDelay(1, 200)).toBe(400);
+      expect(ErrorHandler.computeBackoffDelay(2, 200)).toBe(800);
+      expect(ErrorHandler.computeBackoffDelay(3, 200)).toBe(1600);
+    });
+
+    it('creates AGREEMENT_EXPIRED (3002) error notification', () => {
+      const err = ErrorHandler.createAgreementExpiredError('agr-exp-1', 'frag-exp-1');
+      expect(err.errorCode).toBe(DTPErrorCode.AGREEMENT_EXPIRED);
+      expect(err.relatedAgreementId).toBe('agr-exp-1');
+      expect(err.relatedFrameId).toBe('frag-exp-1');
     });
   });
 });
@@ -252,7 +268,7 @@ describe('DTPEngine Error Handling Integration', () => {
       expect(deserErrors.length).toBe(0);
     });
 
-    it('should accept frames with previous major version (v0.x)', () => {
+    it('should emit VERSION_INCOMPATIBLE for lower major version frames (v0.x, OQ-DTP-2)', () => {
       const key = makeKey();
       const engine = new DTPEngine('master', masterTransport);
       const session = engine.createSession(makeCAPContext(key));
@@ -262,17 +278,15 @@ describe('DTPEngine Error Handling Integration', () => {
       const errors: ErrorNotificationFrame[] = [];
       engine.onError((err) => errors.push(err));
 
-      // A v0.x frame — version is compatible but decryption will fail (raw payload)
-      // We only check that VERSION_INCOMPATIBLE is NOT emitted
       const frame = makeFrame({ protocolVersion: { major: 0, minor: 9 } });
       const serialized = codec.serialize(frame);
 
       const remoteConn = slaveTransport.connect({ protocol: 'memory', address: 'local' });
       slaveTransport.send(remoteConn.connectionId, serialized);
 
-      // Should NOT have a version error (may have decryption error since payload isn't encrypted)
       const versionErrors = errors.filter(e => e.errorCode === DTPErrorCode.VERSION_INCOMPATIBLE);
-      expect(versionErrors.length).toBe(0);
+      expect(versionErrors.length).toBe(1);
+      expect(versionErrors[0].details?.highestSupportedVersion).toEqual(CURRENT_VERSION);
     });
   });
 
@@ -382,6 +396,49 @@ describe('DTPEngine Error Handling Integration', () => {
       expect(received.length).toBeGreaterThanOrEqual(1);
 
       engine.stopRetransmissionTimer();
+    });
+
+    it('enforces maxRetries and emits terminal RETRANSMISSION_TIMEOUT once exhausted (OQ-DTP-11)', () => {
+      const key = makeKey();
+      const engine = new DTPEngine('master', masterTransport, {
+        retransmissionTimeout: 20,
+        maxRetries: 3,
+      });
+      const session = engine.createSession(makeCAPContext(key));
+      const conn = masterTransport.connect({ protocol: 'memory', address: 'local' });
+      engine.bindConnection(session.sessionId, conn.connectionId);
+
+      const frag = {
+        fragmentId: 'f-retry-limit',
+        agreementId: 'a1',
+        originTimestamp: Date.now(),
+        contextMetadata: { dataType: 'test', source: { kind: 'software' as const, appIdentifier: 'app', sharingMethod: 'api' }, customFields: {} },
+        dagDependencies: [],
+        data: new Uint8Array([9, 8, 7]),
+      };
+      engine.resumeManager.cacheFragment(frag, 1);
+
+      const received: Uint8Array[] = [];
+      slaveTransport.onReceive((_cid, data) => received.push(data));
+
+      const errors: ErrorNotificationFrame[] = [];
+      engine.onError((err) => errors.push(err));
+
+      // Attempts 1, 2, 3 succeed in retransmitting
+      engine.retransmitUnacknowledged(session.sessionId);
+      engine.retransmitUnacknowledged(session.sessionId);
+      engine.retransmitUnacknowledged(session.sessionId);
+      expect(received.length).toBe(3);
+      expect(errors.length).toBe(0);
+
+      // 4th attempt exceeds maxRetries=3 -> emits terminal RETRANSMISSION_TIMEOUT and stops sending
+      engine.retransmitUnacknowledged(session.sessionId);
+      expect(received.length).toBe(3);
+      expect(errors.length).toBe(1);
+      expect(errors[0].errorCode).toBe(DTPErrorCode.RETRANSMISSION_TIMEOUT);
+      expect(errors[0].relatedFrameId).toBe('f-retry-limit');
+      expect(errors[0].details?.terminal).toBe(true);
+      expect(errors[0].details?.attempts).toBe(3);
     });
   });
 });

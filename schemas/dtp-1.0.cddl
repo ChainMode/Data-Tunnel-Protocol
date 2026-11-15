@@ -1,0 +1,161 @@
+; Data Tunnel Protocol (DTP) 1.0 Normative CDDL Schema (RFC 8610)
+; Schema ID: https://faying.org/schemas/dtp-1.0.cddl
+;
+; Normative Binary Wire Envelope (OQ-DTP-7):
+;   [4B big-endian uint32 header_len][RFC 8785 JCS UTF-8 FrameHeader][EncryptedPayload]
+; Where EncryptedPayload for AES-256-GCM is:
+;   [12B IV][AES-256-GCM ciphertext][16B AuthTag]
+
+dtp-wire-envelope = (
+  header-byte-length: uint .size 4, ; big-endian uint32 byte length of jcs-header-utf8
+  jcs-header-utf8: bstr .cbor-seq frame-header-json, ; UTF-8 bytes of RFC 8785 JCS FrameHeader
+  payload-bytes: aes256gcm-payload / cleartext-control-payload
+)
+
+aes256gcm-payload = (
+  iv: bstr .size 12,
+  ciphertext: bstr,
+  auth-tag: bstr .size 16
+)
+
+cleartext-control-payload = bstr
+
+; Same-MAJOR backward/forward compatibility rule (OQ-DTP-2):
+; Receivers MUST accept major == 1 with any minor >= 0, ignoring unknown optional fields,
+; and MUST reject major != 1 with VERSION_INCOMPATIBLE (7001).
+protocol-version = {
+  "major": 1,
+  "minor": uint,
+}
+
+frame-type = "data" / "request" / "response" / "control"
+
+dag-relation-type = "derived_from" / "annotates" / "supersedes"
+
+dag-edge = {
+  "relationType": dag-relation-type,
+  "targetFragmentId": tstr .size (1..256),
+}
+
+encryption-algorithm = "AES-256-GCM" / "AES-128-GCM" / "ChaCha20-Poly1305" / "none"
+
+encryption-metadata = {
+  "algorithm": encryption-algorithm,
+  "keyVersion": uint,
+}
+
+; Keys shown in exact RFC 8785 JCS UTF-16 code unit lexicographical order
+frame-header-json = {
+  "agreementId": tstr / null,
+  "dagDependencies": [* dag-edge],
+  "encryptionMetadata": encryption-metadata,
+  "fragmentId": tstr,
+  "frameType": frame-type,
+  "originTimestamp": uint,
+  "protocolVersion": protocol-version,
+  "sequenceNumber": uint,
+  * tstr => any, ; Forward-compatible minor extension fields within major == 1
+}
+
+hardware-source = {
+  "kind": "hardware",
+  "precision": tstr .size (1..128),
+  "samplingRate": number .gt 0,
+  "sensorType": tstr .size (1..128),
+}
+
+software-source = {
+  "appIdentifier": tstr .size (1..256),
+  "kind": "software",
+  "sharingMethod": tstr .size (1..128),
+}
+
+context-metadata = {
+  "customFields": { * tstr => any },
+  "dataType": tstr .size (1..128),
+  "source": hardware-source / software-source,
+}
+
+fragment = {
+  "agreementId": tstr .size (1..256),
+  "contextMetadata": context-metadata,
+  "dagDependencies": [* dag-edge],
+  "data": bstr,
+  "fragmentId": tstr .size (1..256),
+  "originTimestamp": uint,
+}
+
+transfer-mode = "one_time" / "periodic" / "streaming"
+priority-level = "low" / "normal" / "high" / "critical"
+transfer-direction = "collection" / "injection"
+endpoint-role = "master" / "slave" / "observer"
+agreement-status = "negotiating" / "active" / "suspended" / "terminated"
+
+; Session identity (OQ-DTP-9): non-empty opaque identifier; FayID (ifay_ / cofay_) recommended for Fay masters
+session-identity = tstr .size (1..512)
+
+agreement-params = {
+  "dataRange": tstr .size (1..256),
+  "dataType": tstr .size (1..128),
+  "frequency": (number .gt 0) / null,
+  "priority": priority-level,
+  "transferMode": transfer-mode,
+  "validityPeriod": uint .ge 1,
+}
+
+agreement = {
+  "agreementId": tstr .size (1..256),
+  "createdAt": uint,
+  "direction": transfer-direction,
+  "initiator": "master" / "slave",
+  "params": agreement-params,
+  "sessionId": tstr .size (1..256),
+  "status": agreement-status,
+}
+
+request-frame = {
+  "frameType": "request",
+  "proposedParams": agreement-params,
+  "requestId": tstr .size (1..256),
+  "requestType": "collection" / "injection" / "adjustment" / "termination",
+  "requestorRole": "master" / "slave",
+  ? "targetAgreementId": tstr .size (1..256),
+}
+
+response-frame = {
+  ? "agreedParams": agreement-params,
+  ? "agreementId": tstr .size (1..256),
+  "frameType": "response",
+  ? "rejectionReason": tstr .size (1..1024),
+  "requestId": tstr .size (1..256),
+  "result": "accepted" / "rejected" / "counter_proposal",
+}
+
+dtp-error-code =
+  1001 / ; FRAME_DESERIALIZATION_FAILED
+  1002 / ; FRAME_INVALID_FORMAT
+  2001 / ; DECRYPTION_FAILED
+  2002 / ; KEY_NOT_READY
+  3001 / ; AGREEMENT_NOT_FOUND
+  3002 / ; AGREEMENT_EXPIRED
+  3003 / ; AGREEMENT_NEGOTIATION_FAILED
+  4001 / ; DAG_CYCLE_DETECTED
+  4002 / ; DAG_DEPENDENCY_UNRESOLVED
+  5001 / ; SESSION_NOT_FOUND
+  5002 / ; SESSION_TIMEOUT
+  5003 / ; SESSION_RESTORE_FAILED
+  6001 / ; BUFFER_FULL
+  6002 / ; RETRANSMISSION_TIMEOUT
+  7001 / ; VERSION_INCOMPATIBLE
+  8001 / ; PERMISSION_DENIED
+  8002   ; OBSERVER_WRITE_DENIED
+
+error-notification-frame = {
+  "controlType": "error_notification",
+  ? "details": { * tstr => any },
+  "errorCode": dtp-error-code,
+  "errorMessage": tstr .size (1..1024),
+  "frameType": "control",
+  ? "relatedAgreementId": tstr,
+  ? "relatedFrameId": tstr,
+}

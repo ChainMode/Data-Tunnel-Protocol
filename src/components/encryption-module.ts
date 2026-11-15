@@ -24,14 +24,31 @@ export class DTPEncryptionModule implements EncryptionModule {
     this.keyVersion = keyVersion;
   }
 
-  encryptPayload(payload: Uint8Array, _encryptionMeta: EncryptionMetadata): Uint8Array {
+  encryptPayload(payload: Uint8Array, encryptionMeta: EncryptionMetadata): Uint8Array {
     if (!this.isKeyReady()) {
       throw new Error('Encryption key is not ready');
     }
-
     const iv = randomBytes(IV_LENGTH);
-    const cipher = createCipheriv('aes-256-gcm', this.key!, iv);
+    return this.encryptPayloadWithIv(payload, iv, encryptionMeta);
+  }
 
+  /**
+   * Encrypt payload using an explicit 12-byte IV (used for deterministic test vectors
+   * and cross-language conformance verification; production send paths use random IV via encryptPayload).
+   */
+  encryptPayloadWithIv(
+    payload: Uint8Array,
+    iv: Uint8Array,
+    _encryptionMeta?: EncryptionMetadata,
+  ): Uint8Array {
+    if (!this.isKeyReady()) {
+      throw new Error('Encryption key is not ready');
+    }
+    if (iv.length !== IV_LENGTH) {
+      throw new Error(`Invalid IV length: expected ${IV_LENGTH} bytes, got ${iv.length}`);
+    }
+
+    const cipher = createCipheriv('aes-256-gcm', this.key!, iv);
     const encrypted = Buffer.concat([cipher.update(payload), cipher.final()]);
     const authTag = cipher.getAuthTag();
 

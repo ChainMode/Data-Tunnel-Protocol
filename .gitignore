@@ -1,9 +1,12 @@
 # === Default: ignore everything at root (keep process/governance files local) ===
 /*
 
-# === Public deliverables (docs, schema, and TypeScript reference implementation) ===
+# === Public deliverables (docs, schemas, vectors, and reference implementations) ===
 !/docs/
 !/schema/
+!/schemas/
+!/vectors/
+!/reference-impls/
 !/src/
 !/package.json
 !/pnpm-lock.yaml
@@ -23,3 +26,5 @@ node_modules/
 dist/
 coverage/
 *.tsbuildinfo
+reference-impls/rust/target/
+**/target/

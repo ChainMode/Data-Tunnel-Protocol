@@ -1,2 +1,6 @@
-// Data Tunnel Protocol (DTP)
-// Main entry point - re-exports will be added as modules are implemented.
+// Data Tunnel Protocol (DTP 1.0)
+// Public API Barrel Export
+
+export * from './types/index.js';
+export * from './errors/index.js';
+export * from './components/index.js';

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { DTPFrameCodec } from './frame-codec.js';
+import { DTPFrameCodec, canonicalizeJson } from './frame-codec.js';
 import type { LogicalFrame } from '../types/index.js';
 
 const codec = new DTPFrameCodec();
@@ -162,6 +162,61 @@ describe('DTPFrameCodec', () => {
       const output = codec.prettyPrint(frame);
       const lines = output.split('\n');
       expect(lines.length).toBeGreaterThan(1);
+    });
+  });
+
+  describe('RFC 8785 JCS canonical header wire encoding (OQ-DTP-7)', () => {
+    it('serializes header JSON keys in strict lexicographical UTF-16 order', () => {
+      const frame = makeFrame({
+        dagDependencies: [
+          { targetFragmentId: 'dep-1', relationType: 'derived_from' },
+        ],
+      });
+      const bytes = codec.serialize(frame);
+      const headerLen =
+        ((bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3]) >>> 0;
+      const headerJson = Buffer.from(bytes.slice(4, 4 + headerLen)).toString('utf-8');
+
+      // Top-level keys in JCS order:
+      // agreementId, dagDependencies, encryptionMetadata, fragmentId, frameType, originTimestamp, protocolVersion, sequenceNumber
+      // Nested DAGEdge keys in JCS order: relationType, targetFragmentId
+      expect(headerJson).toBe(
+        '{"agreementId":"a50e8400-e29b-41d4-a716-446655440001",' +
+        '"dagDependencies":[{"relationType":"derived_from","targetFragmentId":"dep-1"}],' +
+        '"encryptionMetadata":{"algorithm":"AES-256-GCM","keyVersion":1},' +
+        '"fragmentId":"550e8400-e29b-41d4-a716-446655440000",' +
+        '"frameType":"data",' +
+        '"originTimestamp":1700000000000,' +
+        '"protocolVersion":{"major":1,"minor":0},' +
+        '"sequenceNumber":42}'
+      );
+    });
+
+    it('canonicalizeJson produces identical output regardless of input property insertion order', () => {
+      const a = { z: 1, a: { d: true, b: 'hello' }, m: [3, { y: null, x: -0 }] };
+      const b = { m: [3, { x: 0, y: null }], a: { b: 'hello', d: true }, z: 1 };
+      expect(canonicalizeJson(a)).toBe(canonicalizeJson(b));
+      expect(canonicalizeJson(a)).toBe('{"a":{"b":"hello","d":true},"m":[3,{"x":0,"y":null}],"z":1}');
+    });
+
+    it('rejects frames missing protocolVersion header field', () => {
+      const rawJson = JSON.stringify({
+        frameType: 'data',
+        fragmentId: 'f1',
+        agreementId: null,
+        originTimestamp: 1,
+        dagDependencies: [],
+        encryptionMetadata: { algorithm: 'AES-256-GCM', keyVersion: 1 },
+        sequenceNumber: 1,
+      });
+      const hdr = Buffer.from(rawJson, 'utf-8');
+      const buf = new Uint8Array(4 + hdr.length);
+      buf[0] = (hdr.length >>> 24) & 0xff;
+      buf[1] = (hdr.length >>> 16) & 0xff;
+      buf[2] = (hdr.length >>> 8) & 0xff;
+      buf[3] = hdr.length & 0xff;
+      buf.set(hdr, 4);
+      expect(() => codec.deserialize(buf)).toThrow(/protocolVersion/i);
     });
   });
 });

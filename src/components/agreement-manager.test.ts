@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { DTPAgreementManager } from './agreement-manager.js';
+import { DTPErrorCode } from '../errors/error-codes.js';
 import type { AgreementRequest } from '../types/components.js';
 import type { AgreementParams } from '../types/agreement.js';
 import type { RequestFrame, ResponseFrame } from '../types/negotiation.js';
@@ -352,6 +353,39 @@ describe('DTPAgreementManager', () => {
         agreedParams: makeParams({ priority: 'low' }),
       };
       expect(manager.handleResponse(sessionId, counterResp)).toBeNull();
+    });
+  });
+
+  describe('agreement expiration (AGREEMENT_EXPIRED 3002, OQ-DTP-11)', () => {
+    it('detects expired agreements and returns AGREEMENT_EXPIRED (3002)', () => {
+      const req: RequestFrame = {
+        frameType: 'request',
+        requestId: 'req-exp-1',
+        requestorRole: 'master',
+        requestType: 'collection',
+        proposedParams: makeParams({ validityPeriod: 5000 }),
+      };
+      const resp = manager.handleRequest(sessionId, req);
+      const agreementId = resp.agreementId!;
+      const agreement = manager.getAgreement(agreementId)!;
+
+      // Within validityPeriod -> valid
+      const validRes = manager.validateAgreement(agreementId, agreement.createdAt + 2500);
+      expect(validRes.valid).toBe(true);
+
+      // Past validityPeriod -> AGREEMENT_EXPIRED (3002)
+      const expiredRes = manager.validateAgreement(agreementId, agreement.createdAt + 5001);
+      expect(expiredRes).toEqual({
+        valid: false,
+        errorCode: DTPErrorCode.AGREEMENT_EXPIRED,
+      });
+
+      // Unknown agreement -> AGREEMENT_NOT_FOUND (3001)
+      const unknownRes = manager.validateAgreement('00000000-0000-4000-8000-000000000000');
+      expect(unknownRes).toEqual({
+        valid: false,
+        errorCode: DTPErrorCode.AGREEMENT_NOT_FOUND,
+      });
     });
   });
 });

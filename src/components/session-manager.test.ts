@@ -1,5 +1,15 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { DTPSessionManager } from './session-manager.js';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { randomBytes } from 'node:crypto';
+import {
+  DTPSessionManager,
+  EncryptedFileSessionStore,
+  InMemorySessionStore,
+  isCanonicalFayId,
+} from './session-manager.js';
+import { DTPErrorCode } from '../errors/error-codes.js';
 import type { CAPContext } from '../types/components.js';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -178,6 +188,105 @@ describe('DTPSessionManager', () => {
       session.timeoutThreshold = 1000; // 1 second
       session.lastActivityAt = Date.now() - 2000; // 2 seconds ago
       expect(manager.checkTimeout(session.sessionId)).toBe(true);
+    });
+  });
+
+  describe('Session identities (OQ-DTP-9) and EncryptedFileSessionStore (OQ-DTP-10)', () => {
+    it('rejects empty/whitespace masterIdentity and recognizes canonical FayID prefixes', () => {
+      expect(() => manager.createSession(makeCAPContext({ identity: '   ' }))).toThrow(/identity/i);
+      expect(isCanonicalFayId('ifay_01J8Z9X2W3V4')).toBe(true);
+      expect(isCanonicalFayId('cofay_org_service_01')).toBe(true);
+      expect(isCanonicalFayId('legacy-opaque-device-id')).toBe(false);
+    });
+
+    it('persists session encrypted with AES-256-GCM on disk with zero plaintext leakage and restores across instances', () => {
+      const tempDir = mkdtempSync(join(tmpdir(), 'dtp-session-test-'));
+      try {
+        const snapshotPath = join(tempDir, 'sessions.enc');
+        const storageKey = randomBytes(32);
+        const store1 = new EncryptedFileSessionStore(snapshotPath, storageKey);
+        const mgr1 = new DTPSessionManager(store1);
+
+        const session = mgr1.createSession(makeCAPContext({ identity: 'ifay_prime_alpha' }));
+        session.slaveIdentity = 'host_watch_001';
+        session.collectionState.currentSequenceNumber = 12;
+        const sensitivePlaintext = 'SECRET_HEART_RATE_PAYLOAD_98BPM_NEVER_IN_PLAINTEXT';
+        session.collectionState.unacknowledgedFragmentCache.set(12, {
+          fragmentId: '550e8400-e29b-41d4-a716-446655440099',
+          agreementId: 'a50e8400-e29b-41d4-a716-446655440001',
+          originTimestamp: 1700000000999,
+          contextMetadata: {
+            dataType: 'biometric',
+            source: { kind: 'hardware', sensorType: 'ppg', precision: '1bpm', samplingRate: 50 },
+            customFields: { zone: 'cardio' },
+          },
+          dagDependencies: [],
+          data: new Uint8Array(Buffer.from(sensitivePlaintext, 'utf-8')),
+        });
+        session.activeAgreements.set('a50e8400-e29b-41d4-a716-446655440001', {
+          agreementId: 'a50e8400-e29b-41d4-a716-446655440001',
+          sessionId: session.sessionId,
+          direction: 'collection',
+          initiator: 'master',
+          params: {
+            dataType: 'biometric',
+            dataRange: 'realtime',
+            transferMode: 'streaming',
+            frequency: 50,
+            validityPeriod: 60000,
+            priority: 'high',
+          },
+          status: 'active',
+          createdAt: 1700000000000,
+        });
+
+        mgr1.persistSession(session.sessionId);
+
+        // Verify raw disk bytes contain NO plaintext fragment data, identity, or JSON keys
+        const rawBytes = readFileSync(snapshotPath);
+        const rawLatin1 = rawBytes.toString('utf-8');
+        expect(rawBytes.subarray(0, 4).toString('ascii')).toBe('DTPS');
+        expect(rawLatin1).not.toContain(sensitivePlaintext);
+        expect(rawLatin1).not.toContain('ifay_prime_alpha');
+        expect(rawBytes.includes(Buffer.from(sensitivePlaintext, 'utf-8'))).toBe(false);
+
+        // Simulate process restart with a fresh EncryptedFileSessionStore + DTPSessionManager
+        const store2 = new EncryptedFileSessionStore(snapshotPath, storageKey);
+        const mgr2 = new DTPSessionManager(store2);
+        const restored = mgr2.restoreSession(session.sessionId);
+
+        expect(restored).not.toBeNull();
+        expect(restored!.masterIdentity).toBe('ifay_prime_alpha');
+        expect(restored!.slaveIdentity).toBe('host_watch_001');
+        expect(restored!.collectionState.currentSequenceNumber).toBe(12);
+        const cachedFrag = restored!.collectionState.unacknowledgedFragmentCache.get(12);
+        expect(cachedFrag).toBeDefined();
+        expect(Buffer.from(cachedFrag!.data).toString('utf-8')).toBe(sensitivePlaintext);
+        expect(restored!.activeAgreements.size).toBe(1);
+
+        // Tamper with ciphertext/tag on disk -> must fail with SESSION_RESTORE_FAILED (5003)
+        const tampered = Buffer.from(rawBytes);
+        tampered[tampered.length - 1] ^= 0xff;
+        writeFileSync(snapshotPath, tampered);
+
+        const storeTampered = new EncryptedFileSessionStore(snapshotPath, storageKey);
+        expect(() => storeTampered.load(session.sessionId)).toThrow();
+        try {
+          storeTampered.load(session.sessionId);
+        } catch (err: any) {
+          expect(err.code).toBe(DTPErrorCode.SESSION_RESTORE_FAILED);
+        }
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it('keeps InMemorySessionStore as default store', () => {
+      const memStore = new InMemorySessionStore();
+      const mgr = new DTPSessionManager(memStore);
+      const s = mgr.createSession(makeCAPContext());
+      mgr.persistSession(s.sessionId);
+      expect(memStore.load(s.sessionId)?.sessionId).toBe(s.sessionId);
     });
   });
 });
