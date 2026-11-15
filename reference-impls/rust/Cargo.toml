@@ -3,7 +3,7 @@ name = "dtp-ref"
 version = "1.0.0"
 edition = "2021"
 description = "Independent Rust reference implementation of Data Tunnel Protocol (DTP) 1.0"
-license = "Apache-2.0"
+license = "MIT"
 publish = false
 
 [dependencies]

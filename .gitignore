@@ -14,6 +14,10 @@
 !/vitest.config.ts
 !/README.md
 !/LICENSE
+!/LICENSE-DOCS
+!/SECURITY.md
+!/CONTRIBUTING.md
+!/CODE_OF_CONDUCT.md
 !/.gitignore
 
 # === Exclude build/cache/OS noise inside allowed directories ===

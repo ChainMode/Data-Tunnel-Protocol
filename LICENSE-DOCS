@@ -1,0 +1,28 @@
+Creative Commons Attribution 4.0 International (CC BY 4.0)
+
+Copyright (c) 2025-2026 ChainMode contributors
+
+Scope
+-----
+All protocol specifications, architectural blueprints, and narrative diagrams located under `docs/` in this repository are licensed under the Creative Commons Attribution 4.0 International License (CC BY 4.0).
+
+Reference implementations, SDKs, machine-readable schemas, and conformance test vectors in this repository are licensed separately under the MIT License — see `LICENSE`.
+
+Summary of Permissions and Conditions (Informational)
+-----------------------------------------------------
+You are free to:
+- Share: copy and redistribute the material in any medium or format for any purpose, even commercially.
+- Adapt: remix, transform, and build upon the material for any purpose, even commercially.
+
+Under the following conditions:
+- Attribution: You must give appropriate credit to "ChainMode contributors", provide a link to the license, and indicate if changes were made. You may do so in any reasonable manner, but not in any way that suggests the licensor endorses you or your use.
+- No additional restrictions: You may not apply legal terms or technological measures that legally restrict others from doing anything the license permits.
+
+No Warranties
+-------------
+The license may not give you all of the permissions necessary for your intended use. No warranties are given. The material is provided "as-is" without representations or warranties of any kind.
+
+Authoritative Legal Code
+------------------------
+This summary is not a substitute for the license. Read the full Creative Commons Attribution 4.0 International legal code at:
+https://creativecommons.org/licenses/by/4.0/legalcode
