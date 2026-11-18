@@ -1,6 +1,11 @@
 # Data Tunnel Protocol (DTP)
 
-Negotiated, end-to-end encrypted, resumable data-transfer channel protocol for the iFay ecosystem, featuring Master-Slave authority governance, RFC 8785 JCS + AES-256-GCM logical frame wire encoding, and DAG fragment provenance.
+[![Docs CI](https://github.com/ChainMode/Data-Tunnel-Protocol/actions/workflows/docs-ci.yml/badge.svg)](https://github.com/ChainMode/Data-Tunnel-Protocol/actions/workflows/docs-ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+[![Docs: CC BY 4.0](https://img.shields.io/badge/Docs-CC%20BY%204.0-lightgrey.svg)](./LICENSE-DOCS)
+[![Website: ifay.ai](https://img.shields.io/badge/Website-ifay.ai-blue)](https://ifay.ai)
+
+**Data Tunnel Protocol (`dtp/1.0`)** is the negotiated, end-to-end encrypted, resumable data-transfer channel protocol for **Fay** avatars and **Host** endpoints in the **iFay** ecosystem. It enforces Master-Slave authority governance, RFC 8785 JCS + AES-256-GCM authenticated frame encoding, and verifiable DAG fragment provenance.
 
 ## Normative Wire Envelope (`dtp/1.0`)
 

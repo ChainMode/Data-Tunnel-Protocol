@@ -24,6 +24,12 @@
 !/.github/workflows/
 /.github/workflows/*
 !/.github/workflows/docs-ci.yml
+!/.github/ISSUE_TEMPLATE/
+/.github/ISSUE_TEMPLATE/*
+!/.github/ISSUE_TEMPLATE/bug_report.yml
+!/.github/ISSUE_TEMPLATE/feature_request.yml
+!/.github/ISSUE_TEMPLATE/config.yml
+!/.github/pull_request_template.md
 
 # === Exclude build/cache/OS noise inside allowed directories ===
 .DS_Store
