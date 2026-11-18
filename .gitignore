@@ -19,6 +19,11 @@
 !/CONTRIBUTING.md
 !/CODE_OF_CONDUCT.md
 !/.gitignore
+!/.github/
+/.github/*
+!/.github/workflows/
+/.github/workflows/*
+!/.github/workflows/docs-ci.yml
 
 # === Exclude build/cache/OS noise inside allowed directories ===
 .DS_Store
