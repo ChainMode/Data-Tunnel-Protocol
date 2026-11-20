@@ -5,8 +5,12 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "dtp-collector": "./dist/collector/cli.js"
+  },
   "scripts": {
     "build": "tsc",
+    "demo": "npm run build && node dist/collector/cli.js demo",
     "test": "vitest --run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"

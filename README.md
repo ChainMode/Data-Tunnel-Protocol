@@ -29,17 +29,65 @@ DTP guarantees backward and forward compatibility strictly within the same `MAJO
 | `reference-impls/rust/` | Independent `#![forbid(unsafe_code)]` Rust reference implementation (`dtp-ref`) cross-verifying wire & cryptographic interoperability |
 | `schema/` | Legacy historical JSON schema snapshots |
 
-## Quick Start
+## 30-Second Runnable Quickstart (`dtp-collector` & Minimal Injection)
 
 ```bash
-# TypeScript reference engine & 310-test suite (unit + E2E + TCP loopback + 29 PBT + vectors)
-npm install
+# Run the end-to-end Personal Context Collector + Privacy-Filtered Minimal Injection demo
+npm run demo
+
+# Run the 316-test TypeScript suite (unit + E2E + TCP loopback + 29 PBT + vectors + collector)
 npm run typecheck
 npm test
+
+# CLI usage (after npm run build)
+npx dtp-collector collect --workspace ./notes --heap ./personal-heap --key my-secret --activity deep_work
+npx dtp-collector inspect --heap ./personal-heap --key my-secret
+npx dtp-collector inject  --heap ./personal-heap --key my-secret --app-id bistro --purpose dining --request dietary_preference,text --allow dietary_preference
 
 # Rust reference implementation & cross-language vector suite
 cd reference-impls/rust
 cargo test
+```
+
+## Developer Integration (`dtp-collector` SDK)
+
+```ts
+import {
+  collectWorkspaceToHeap,
+  deriveCollectorKeyFromHexOrPassphrase,
+  requestMinimalContextFromIfay,
+} from 'data-tunnel-protocol';
+
+const heapKey = deriveCollectorKeyFromHexOrPassphrase(process.env.IFAY_HEAP_SECRET!);
+
+// Flow 1 (Host Terminal -> iFay): Encrypted contextual note collection into Personal Data Heap
+// Wire frames are 100% compatible with @ifay/soul ingestDtpContextFrame()
+const collected = collectWorkspaceToHeap({
+  workspaceDir: './authorized-notes',
+  heapDir: './personal-data-heap',
+  sessionKey: heapKey,
+  ambientContext: {
+    timezone: 'Asia/Shanghai',
+    ambient_activity: 'deep_work',
+    device_class: 'laptop_workstation',
+    source_app: 'obsidian',
+  },
+});
+
+// Flow 2 (iFay -> External App): Privacy-filtered minimal data injection over encrypted DTP frame
+// Strips all raw prose, file paths, and Human Prime / Fay identifiers automatically
+const injection = requestMinimalContextFromIfay(
+  { heapDir: './personal-data-heap', heapSessionKey: heapKey },
+  {
+    appId: 'bistro-booker',
+    purpose: 'dinner_reservation',
+    requestedFields: ['dietary_preference', 'schedule_window', 'text', 'human_prime_id'],
+  },
+  {
+    approvedFields: ['dietary_preference', 'schedule_window'],
+    allowedPurposes: ['dinner_reservation'],
+  },
+);
 ```
 
 ## License
