@@ -7,6 +7,27 @@
 
 **Data Tunnel Protocol (`dtp/1.0`)** is the negotiated, end-to-end encrypted, resumable data-transfer channel protocol for **Fay** avatars and **Host** endpoints in the **iFay** ecosystem. It enforces Master-Slave authority governance, RFC 8785 JCS + AES-256-GCM authenticated frame encoding, and verifiable DAG fragment provenance.
 
+> **Version & Toolchain Alignment**: Normative Wire Envelope = **`dtp/1.0`** (frozen) · Reference Implementation & `dtp-collector` Release = **[`v1.1.0`](https://github.com/ChainMode/Data-Tunnel-Protocol/releases/tag/v1.1.0)** (`package.json` `1.1.0`, distributed via GitHub Release / source). Both **`npm`** (`npm ci && npm test`) and **`pnpm`** (`pnpm install --frozen-lockfile && pnpm test`) are verified and supported in parity.
+
+## 30-Second Runnable Quickstart (`dtp-collector` & Minimal Injection)
+
+```bash
+# Install with either npm or pnpm, then run the Personal Context Collector + Minimal Injection demo
+npm install && npm run demo
+# (or: pnpm install --frozen-lockfile && pnpm run demo)
+
+# Run the 316-test TypeScript suite (unit + E2E + TCP loopback + 29 PBT + vectors + collector)
+npm run typecheck && npm test
+
+# CLI usage (after npm run build)
+npx dtp-collector collect --workspace ./notes --heap ./personal-heap --key my-secret --activity deep_work
+npx dtp-collector inspect --heap ./personal-heap --key my-secret
+npx dtp-collector inject  --heap ./personal-heap --key my-secret --app-id bistro --purpose dining --request dietary_preference,text --allow dietary_preference
+
+# Rust reference implementation & cross-language vector suite
+cd reference-impls/rust && cargo test
+```
+
 ## Normative Wire Envelope (`dtp/1.0`)
 
 ```text
@@ -25,29 +46,9 @@ DTP guarantees backward and forward compatibility strictly within the same `MAJO
 | `docs/{locale}/specification/` | Normative DTP specification |
 | `schemas/` | Frozen `dtp/1.0` machine-readable schemas (`dtp-1.0.json`, `dtp-1.0.cddl`) |
 | `vectors/` | Official cross-language conformance test vectors (`dtp-1.0-conformance.json`) |
-| `src/` | TypeScript reference implementation (including `EncryptedFileSessionStore`, `TcpTransportAdapter`, 29 `fast-check` property tests, and conformance suite) |
+| `src/` | TypeScript reference implementation (including `EncryptedFileSessionStore`, `TcpTransportAdapter`, `dtp-collector`, 29 `fast-check` property tests, and conformance suite) |
 | `reference-impls/rust/` | Independent `#![forbid(unsafe_code)]` Rust reference implementation (`dtp-ref`) cross-verifying wire & cryptographic interoperability |
 | `schema/` | Legacy historical JSON schema snapshots |
-
-## 30-Second Runnable Quickstart (`dtp-collector` & Minimal Injection)
-
-```bash
-# Run the end-to-end Personal Context Collector + Privacy-Filtered Minimal Injection demo
-npm run demo
-
-# Run the 316-test TypeScript suite (unit + E2E + TCP loopback + 29 PBT + vectors + collector)
-npm run typecheck
-npm test
-
-# CLI usage (after npm run build)
-npx dtp-collector collect --workspace ./notes --heap ./personal-heap --key my-secret --activity deep_work
-npx dtp-collector inspect --heap ./personal-heap --key my-secret
-npx dtp-collector inject  --heap ./personal-heap --key my-secret --app-id bistro --purpose dining --request dietary_preference,text --allow dietary_preference
-
-# Rust reference implementation & cross-language vector suite
-cd reference-impls/rust
-cargo test
-```
 
 ## Developer Integration (`dtp-collector` SDK)
 

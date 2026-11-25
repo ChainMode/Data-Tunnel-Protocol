@@ -24,11 +24,12 @@ Thank you for contributing to **Data Tunnel Protocol (DTP)**! This guide outline
 DTP `1.0` requires cross-language wire parity across TypeScript (`src/`) and Rust (`reference-impls/rust/`) against `vectors/dtp-1.0-conformance.json`:
 
 ```bash
-# 1. TypeScript reference implementation (unit, E2E, TCP loopback, 29 PBT & conformance vectors)
-pnpm install --frozen-lockfile
-pnpm run typecheck
-pnpm test
-pnpm run build
+# 1. TypeScript reference implementation (both npm and pnpm lockfiles are supported)
+npm ci          # or: pnpm install --frozen-lockfile
+npm run typecheck
+npm test
+npm run build
+npm run demo
 
 # 2. Rust reference implementation & cross-language conformance vectors
 cd reference-impls/rust
